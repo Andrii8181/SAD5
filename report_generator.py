@@ -2,6 +2,8 @@ import docx
 from docx.shared import Inches
 import matplotlib.pyplot as plt
 from tkinter import filedialog, messagebox
+import pandas as pd
+import numpy as np
 
 class ReportGenerator:
     """
@@ -24,8 +26,10 @@ class ReportGenerator:
             doc.add_heading("Результати аналізу", level=2)
             if isinstance(self.analysis_results, str):
                 doc.add_paragraph(self.analysis_results)
-            else:
+            elif isinstance(self.analysis_results, pd.DataFrame):
                 doc.add_paragraph(self.analysis_results.to_string())
+            else: # Для summary з statsmodels
+                doc.add_paragraph(self.analysis_results.as_text())
 
             doc.add_heading("Графіки", level=2)
             self.create_box_plot(doc)
@@ -42,29 +46,33 @@ class ReportGenerator:
     def create_box_plot(self, doc):
         """Створює та додає боксплот до звіту."""
         try:
-            plt.figure()
-            self.df.boxplot()
-            plt.title("Боксплот")
-            plt.ylabel("Значення")
-            plt.xlabel("Показники")
-            plt.tight_layout()
-            plt.savefig("boxplot.png")
-            doc.add_paragraph("Боксплот:")
-            doc.add_picture("boxplot.png", width=Inches(6))
+            numeric_df = self.df.select_dtypes(include=np.number)
+            if not numeric_df.empty:
+                plt.figure()
+                numeric_df.boxplot()
+                plt.title("Боксплот")
+                plt.ylabel("Значення")
+                plt.xlabel("Показники")
+                plt.tight_layout()
+                plt.savefig("boxplot.png")
+                doc.add_paragraph("Боксплот:")
+                doc.add_picture("boxplot.png", width=Inches(6))
         except Exception as e:
             doc.add_paragraph(f"Помилка при створенні боксплоту: {e}")
 
     def create_histogram(self, doc):
         """Створює та додає гістограму до звіту."""
         try:
-            plt.figure()
-            self.df.iloc[:, 0].hist()
-            plt.title("Гістограма")
-            plt.xlabel("Значення")
-            plt.ylabel("Частота")
-            plt.tight_layout()
-            plt.savefig("histogram.png")
-            doc.add_paragraph("Гістограма:")
-            doc.add_picture("histogram.png", width=Inches(6))
+            numeric_cols = self.df.select_dtypes(include=np.number).columns
+            if not numeric_cols.empty:
+                plt.figure()
+                self.df[numeric_cols[0]].hist()
+                plt.title("Гістограма")
+                plt.xlabel("Значення")
+                plt.ylabel("Частота")
+                plt.tight_layout()
+                plt.savefig("histogram.png")
+                doc.add_paragraph("Гістограма:")
+                doc.add_picture("histogram.png", width=Inches(6))
         except Exception as e:
             doc.add_paragraph(f"Помилка при створенні гістограми: {e}")
