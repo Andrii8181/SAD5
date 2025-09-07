@@ -46,7 +46,7 @@ class ReportGenerator:
     def create_box_plot(self, doc):
         """Створює та додає боксплот до звіту."""
         try:
-            numeric_df = self.df.select_dtypes(include=np.number)
+            numeric_df = self.df.apply(pd.to_numeric, errors='coerce').select_dtypes(include=np.number)
             if not numeric_df.empty:
                 plt.figure()
                 numeric_df.boxplot()
@@ -63,7 +63,7 @@ class ReportGenerator:
     def create_histogram(self, doc):
         """Створює та додає гістограму до звіту."""
         try:
-            numeric_cols = self.df.select_dtypes(include=np.number).columns
+            numeric_cols = self.df.apply(pd.to_numeric, errors='coerce').select_dtypes(include=np.number).columns
             if not numeric_cols.empty:
                 plt.figure()
                 self.df[numeric_cols[0]].hist()
