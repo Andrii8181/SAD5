@@ -18,12 +18,14 @@ class StatAnalysis:
         """Виконує тест Шапіро-Вілка та пропонує подальші аналізи."""
         try:
             # Спроба отримати числовий стовпець для тесту
-            numeric_cols = self.df.select_dtypes(include=np.number).columns
+            numeric_cols = self.df.apply(pd.to_numeric, errors='coerce').select_dtypes(include=np.number).columns
             if numeric_cols.empty:
                 messagebox.showerror("Помилка", "В таблиці немає числових даних для аналізу.")
                 return
 
-            data_to_analyze = self.df[numeric_cols[0]].dropna()
+            first_numeric_col_name = numeric_cols[0]
+            data_to_analyze = self.df[first_numeric_col_name].dropna()
+            
             if len(data_to_analyze) < 3:
                 messagebox.showerror("Помилка", "Недостатньо даних для аналізу. Потрібно щонайменше 3 значення.")
                 return
@@ -42,12 +44,12 @@ class StatAnalysis:
 
     def show_parametric_options(self, parent_app):
         """Відкриває вікно вибору параметричних аналізів."""
-        options = ["Дисперсійний аналіз", "Регресія"] # Додайте інші аналізи тут
+        options = ["Дисперсійний аналіз", "Регресія"]
         self.create_analysis_window(parent_app, options, is_parametric=True)
 
     def show_non_parametric_options(self, parent_app):
         """Відкриває вікно вибору непараметричних аналізів."""
-        options = ["Медіанний тест", "Критерій Уїлкоксона"] # Додайте інші аналізи тут
+        options = ["Медіанний тест", "Критерій Уїлкоксона"]
         self.create_analysis_window(parent_app, options, is_parametric=False)
 
     def create_analysis_window(self, parent_app, options, is_parametric):
@@ -74,36 +76,38 @@ class StatAnalysis:
         """Виконує обраний аналіз та генерує звіт."""
         try:
             df_cleaned = self.df.copy()
-            
-            # Перетворюємо всі числові стовпці на float
-            for col in df_cleaned.columns:
-                try:
-                    df_cleaned[col] = pd.to_numeric(df_cleaned[col])
-                except ValueError:
-                    continue
-            
-            # Фільтруємо лише числові стовпці для аналізу
-            numeric_df = df_cleaned.select_dtypes(include=np.number).dropna()
+            numeric_df = df_cleaned.apply(pd.to_numeric, errors='coerce').select_dtypes(include=np.number)
             
             if analysis_type == "Дисперсійний аналіз":
-                # Припускаємо, що перший числовий стовпець - залежна змінна, другий - фактор
-                if numeric_df.shape[1] < 2:
-                    raise ValueError("Недостатньо числових стовпців для дисперсійного аналізу.")
+                if numeric_df.shape[1] < 1 or df_cleaned.shape[1] < 2:
+                    raise ValueError("Недостатньо даних для дисперсійного аналізу.")
                 
-                df_anova = pd.DataFrame({
-                    'value': numeric_df.iloc[:, 0],
-                    'group': df_cleaned.iloc[:, 1].astype(str)
-                })
-                model = ols('value ~ group', data=df_anova).fit()
+                # Визначаємо залежну змінну (перший числовий стовпець) та фактор (перший текстовий)
+                response_col = numeric_df.columns[0]
+                factor_cols = df_cleaned.select_dtypes(exclude=np.number).columns
+                if not factor_cols.empty:
+                    factor_col = factor_cols[0]
+                    formula = f'{response_col} ~ C({factor_col})' # C() позначає категоріальну змінну
+                else:
+                    raise ValueError("Відсутні текстові стовпці для використання як фактори.")
+
+                model_df = pd.DataFrame({
+                    response_col: numeric_df[response_col],
+                    factor_col: df_cleaned[factor_col]
+                }).dropna()
+
+                model = ols(formula, data=model_df).fit()
                 analysis_results = sm.stats.anova_lm(model, typ=2)
+            
             elif analysis_type == "Регресія":
                 if numeric_df.shape[1] < 2:
                     raise ValueError("Недостатньо числових стовпців для регресійного аналізу.")
                 
-                X = sm.add_constant(numeric_df.iloc[:, 1])
                 y = numeric_df.iloc[:, 0]
+                X = sm.add_constant(numeric_df.iloc[:, 1])
                 model = sm.OLS(y, X).fit()
                 analysis_results = model.summary()
+            
             else:
                 analysis_results = f"Аналіз '{analysis_type}' ще не реалізовано."
 
