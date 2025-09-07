@@ -1,0 +1,33 @@
+name: Build and Release Windows Executable
+
+on:
+  push:
+    branches:
+      - main # Цей робочий процес буде запускатись при кожному оновленні гілки 'main'
+
+jobs:
+  build:
+    runs-on: windows-latest # Використовуємо операційну систему Windows для компіляції
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas scipy matplotlib python-docx statsmodels pyinstaller
+
+    - name: Run PyInstaller
+      run: pyinstaller --onefile sad_app.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: sad-app-exe
+        path: dist/sad_app.exe
