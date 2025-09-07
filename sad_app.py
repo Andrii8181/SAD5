@@ -15,7 +15,7 @@ class SADApp(tk.Tk):
         self.title("SAD - Статистичний аналіз даних")
         self.geometry("1000x700")
 
-        self.df = pd.DataFrame(np.zeros((10, 10)), dtype=object) # Змінено dtype на object для зберігання тексту
+        self.df = pd.DataFrame(np.zeros((10, 10)), dtype=object)
         self.create_widgets()
         self.selected_item = None
         self.selected_col_index = -1
@@ -35,8 +35,15 @@ class SADApp(tk.Tk):
         self.tree.pack(expand=True, fill='both', padx=10, pady=5)
         self.update_table()
         self.tree.bind('<Button-3>', self.show_context_menu)
-        self.tree.bind('<Double-1>', self.edit_cell)
         self.tree.bind('<Button-1>', self.select_cell)
+        
+        # New bindings for direct editing and navigation
+        self.tree.bind('<Return>', self.edit_or_navigate)
+        self.tree.bind('<Tab>', self.edit_or_navigate)
+        self.tree.bind('<Left>', lambda e: self.move_focus(-1, 0))
+        self.tree.bind('<Right>', lambda e: self.move_focus(1, 0))
+        self.tree.bind('<Up>', lambda e: self.move_focus(0, -1))
+        self.tree.bind('<Down>', lambda e: self.move_focus(0, 1))
 
     def update_table(self):
         """Оновлює дані в таблиці Treeview з DataFrame."""
@@ -107,53 +114,21 @@ class SADApp(tk.Tk):
             self.tree.selection_remove(self.tree.selection())
             self.tree.selection_add(self.selected_item)
 
-    def edit_cell(self, event):
-        """Дозволяє редагувати дані в клітинці."""
-        item_id = self.tree.identify_row(event.y)
-        col_id = self.tree.identify_column(event.x)
-        if not item_id or not col_id:
-            return
-
-        row_index = int(self.tree.index(item_id))
-        col_index = int(col_id.replace("#", "")) - 1
-        
-        cell_value = self.df.iloc[row_index, col_index]
-        entry = ttk.Entry(self, width=10)
-        entry.insert(0, str(cell_value))
-        entry.bind("<Return>", lambda e: self.save_edit(e, entry, row_index, col_index))
-        entry.bind("<FocusOut>", lambda e: self.save_edit(e, entry, row_index, col_index, focus_out=True))
-        
-        # Key bindings for navigation
-        entry.bind('<Right>', lambda e: self.move_focus(1, 0, entry))
-        entry.bind('<Left>', lambda e: self.move_focus(-1, 0, entry))
-        entry.bind('<Up>', lambda e: self.move_focus(0, -1, entry))
-        entry.bind('<Down>', lambda e: self.move_focus(0, 1, entry))
-        entry.bind('<Tab>', lambda e: self.move_focus(1, 0, entry, tab=True))
-
-        x, y, width, height = self.tree.bbox(item_id, col_id)
-        entry.place(x=x, y=y, width=width, height=height)
-        entry.focus_set()
-        entry.select_range(0, 'end')
-
-    def save_edit(self, event, entry, row_index, col_index, focus_out=False):
-        """Зберігає змінене значення клітинки."""
-        if not entry.winfo_exists():
+    def edit_or_navigate(self, event):
+        """Запускає редагування клітинки або переходить далі."""
+        if not self.selected_item:
             return
         
-        new_value = entry.get()
-        try:
-            self.df.iloc[row_index, col_index] = new_value
-            self.update_table()
-        except ValueError:
-            messagebox.showerror("Помилка", "Некоректне значення.")
-        finally:
-            entry.destroy()
-            if not focus_out:
-                self.focus()
+        # Determine the next cell to move to
+        if event.keysym == 'Return' or event.keysym == 'Tab':
+            self.move_focus(1, 0, start_edit=True)
+        else:
+            self.edit_cell()
 
-    def move_focus(self, col_shift, row_shift, current_entry, tab=False):
+    def move_focus(self, col_shift, row_shift, start_edit=False):
         """Переміщує фокус на іншу клітинку."""
-        current_entry.destroy()
+        if not self.selected_item:
+            return
         
         row_index = int(self.tree.index(self.selected_item))
         col_index = self.selected_col_index
@@ -161,52 +136,55 @@ class SADApp(tk.Tk):
         new_row_index = row_index + row_shift
         new_col_index = col_index + col_shift
 
-        # Обробка переходу на наступний рядок при натисканні Tab або Enter
-        if tab or (row_shift == 0 and col_shift == 1):
-            if new_col_index >= len(self.df.columns):
-                new_col_index = 0
-                new_row_index += 1
-            if new_col_index < 0:
-                new_col_index = len(self.df.columns) - 1
-                new_row_index -= 1
-
-        # Перевірка меж таблиці
         if 0 <= new_row_index < len(self.df) and 0 <= new_col_index < len(self.df.columns):
             new_item_id = self.tree.get_children()[new_row_index]
             self.tree.selection_remove(self.tree.selection())
             self.tree.selection_add(new_item_id)
-            
             self.selected_item = new_item_id
             self.selected_col_index = new_col_index
-
-            # Запускаємо редагування нової клітинки
-            self.edit_cell_by_indices(new_row_index, new_col_index)
+            
+            if start_edit:
+                self.edit_cell()
         else:
             self.focus()
 
-    def edit_cell_by_indices(self, row_index, col_index):
-        """Запускає редагування клітинки за індексами."""
-        item_id = self.tree.get_children()[row_index]
-        col_id = f"#{col_index + 1}"
-        
-        x, y, width, height = self.tree.bbox(item_id, col_id)
-        
+    def edit_cell(self):
+        """Запускає редагування поточної вибраної клітинки."""
+        if not self.selected_item:
+            return
+
+        row_index = int(self.tree.index(self.selected_item))
+        col_index = self.selected_col_index
+
         cell_value = self.df.iloc[row_index, col_index]
         entry = ttk.Entry(self, width=10)
         entry.insert(0, str(cell_value))
-        entry.bind("<Return>", lambda e: self.save_edit(e, entry, row_index, col_index))
-        entry.bind("<FocusOut>", lambda e: self.save_edit(e, entry, row_index, col_index, focus_out=True))
-        
-        entry.bind('<Right>', lambda e: self.move_focus(1, 0, entry))
-        entry.bind('<Left>', lambda e: self.move_focus(-1, 0, entry))
-        entry.bind('<Up>', lambda e: self.move_focus(0, -1, entry))
-        entry.bind('<Down>', lambda e: self.move_focus(0, 1, entry))
-        entry.bind('<Tab>', lambda e: self.move_focus(1, 0, entry, tab=True))
 
+        def save_edit(event):
+            try:
+                new_value = entry.get()
+                self.df.iloc[row_index, col_index] = new_value
+                self.update_table()
+                entry.destroy()
+                self.tree.focus_set()
+                self.tree.selection_set(self.selected_item)
+            except Exception as e:
+                messagebox.showerror("Помилка", f"Помилка введення: {e}")
+                entry.destroy()
+                self.tree.focus_set()
+
+        def on_return(event):
+            save_edit(event)
+            self.move_focus(1, 0, start_edit=True)
+
+        entry.bind("<Return>", on_return)
+        entry.bind("<FocusOut>", save_edit)
+
+        # Positioning the entry widget over the cell
+        x, y, width, height = self.tree.bbox(self.selected_item, self.tree["columns"][col_index])
         entry.place(x=x, y=y, width=width, height=height)
         entry.focus_set()
         entry.select_range(0, 'end')
-
 
     def analyze_data(self):
         """Запускає процес аналізу даних."""
