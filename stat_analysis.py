@@ -17,7 +17,13 @@ class StatAnalysis:
     def run_analysis(self, parent_app):
         """Виконує тест Шапіро-Вілка та пропонує подальші аналізи."""
         try:
-            data_to_analyze = self.df.iloc[:, 0].dropna()
+            # Спроба отримати числовий стовпець для тесту
+            numeric_cols = self.df.select_dtypes(include=np.number).columns
+            if numeric_cols.empty:
+                messagebox.showerror("Помилка", "В таблиці немає числових даних для аналізу.")
+                return
+
+            data_to_analyze = self.df[numeric_cols[0]].dropna()
             if len(data_to_analyze) < 3:
                 messagebox.showerror("Помилка", "Недостатньо даних для аналізу. Потрібно щонайменше 3 значення.")
                 return
@@ -67,20 +73,35 @@ class StatAnalysis:
     def perform_and_report_analysis(self, analysis_type, is_parametric):
         """Виконує обраний аналіз та генерує звіт."""
         try:
-            # Для простоти візьмемо перші два стовпці для аналізу
-            df_cleaned = self.df.iloc[:, :2].dropna()
+            df_cleaned = self.df.copy()
+            
+            # Перетворюємо всі числові стовпці на float
+            for col in df_cleaned.columns:
+                try:
+                    df_cleaned[col] = pd.to_numeric(df_cleaned[col])
+                except ValueError:
+                    continue
+            
+            # Фільтруємо лише числові стовпці для аналізу
+            numeric_df = df_cleaned.select_dtypes(include=np.number).dropna()
             
             if analysis_type == "Дисперсійний аналіз":
-                # Припускаємо, що перший стовпець - залежна змінна, другий - фактор
+                # Припускаємо, що перший числовий стовпець - залежна змінна, другий - фактор
+                if numeric_df.shape[1] < 2:
+                    raise ValueError("Недостатньо числових стовпців для дисперсійного аналізу.")
+                
                 df_anova = pd.DataFrame({
-                    'value': df_cleaned.iloc[:, 0],
+                    'value': numeric_df.iloc[:, 0],
                     'group': df_cleaned.iloc[:, 1].astype(str)
                 })
                 model = ols('value ~ group', data=df_anova).fit()
                 analysis_results = sm.stats.anova_lm(model, typ=2)
             elif analysis_type == "Регресія":
-                X = sm.add_constant(df_cleaned.iloc[:, 1])
-                y = df_cleaned.iloc[:, 0]
+                if numeric_df.shape[1] < 2:
+                    raise ValueError("Недостатньо числових стовпців для регресійного аналізу.")
+                
+                X = sm.add_constant(numeric_df.iloc[:, 1])
+                y = numeric_df.iloc[:, 0]
                 model = sm.OLS(y, X).fit()
                 analysis_results = model.summary()
             else:
