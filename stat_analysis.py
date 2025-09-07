@@ -18,13 +18,14 @@ class StatAnalysis:
         """Виконує тест Шапіро-Вілка та пропонує подальші аналізи."""
         try:
             # Спроба отримати числовий стовпець для тесту
-            numeric_cols = self.df.apply(pd.to_numeric, errors='coerce').select_dtypes(include=np.number).columns
+            numeric_df = self.df.apply(pd.to_numeric, errors='coerce')
+            numeric_cols = numeric_df.select_dtypes(include=np.number).columns
             if numeric_cols.empty:
                 messagebox.showerror("Помилка", "В таблиці немає числових даних для аналізу.")
                 return
 
             first_numeric_col_name = numeric_cols[0]
-            data_to_analyze = self.df[first_numeric_col_name].dropna()
+            data_to_analyze = numeric_df[first_numeric_col_name].dropna()
             
             if len(data_to_analyze) < 3:
                 messagebox.showerror("Помилка", "Недостатньо даних для аналізу. Потрібно щонайменше 3 значення.")
@@ -40,7 +41,7 @@ class StatAnalysis:
                 messagebox.showinfo("Результат", f"Дані не є нормально розподіленими (p={p_value:.3f} <= 0.05).")
                 self.show_non_parametric_options(parent_app)
         except Exception as e:
-            messagebox.showerror("Помилка", f"Помилка при аналізі даних: {e}")
+            messagebox.showerror("Помилка", f"Помилка при аналізі даних: {e}. Переконайтеся, що дані є числовими.")
 
     def show_parametric_options(self, parent_app):
         """Відкриває вікно вибору параметричних аналізів."""
@@ -82,12 +83,11 @@ class StatAnalysis:
                 if numeric_df.shape[1] < 1 or df_cleaned.shape[1] < 2:
                     raise ValueError("Недостатньо даних для дисперсійного аналізу.")
                 
-                # Визначаємо залежну змінну (перший числовий стовпець) та фактор (перший текстовий)
                 response_col = numeric_df.columns[0]
                 factor_cols = df_cleaned.select_dtypes(exclude=np.number).columns
                 if not factor_cols.empty:
                     factor_col = factor_cols[0]
-                    formula = f'{response_col} ~ C({factor_col})' # C() позначає категоріальну змінну
+                    formula = f'`{response_col}` ~ C(`{factor_col}`)'
                 else:
                     raise ValueError("Відсутні текстові стовпці для використання як фактори.")
 
